@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>红队攻击路径管理工具 — Attack Path Manager</title>
+<style>
+:root {
+  --bg: #0d1117; --bg2: #161b22; --bg3: #21262d; --border: #30363d;
+  --text: #c9d1d9; --text2: #8b949e; --accent: #58a6ff; --danger: #f85149;
+  --success: #3fb950; --warn: #d29922; --font: 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  --mono: 'SF Mono','Cascadia Code','Consolas',monospace;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:var(--font); background:var(--bg); color:var(--text); overflow:hidden; height:100vh; display:flex; flex-direction:column; user-select:none; }
+
+#toolbar { display:flex; align-items:center; gap:4px; padding:6px 12px; background:var(--bg2); border-bottom:1px solid var(--border); flex-shrink:0; z-index:100; }
+#toolbar .sep { width:1px; height:24px; background:var(--border); margin:0 6px; }
+.tbtn { display:flex; align-items:center; gap:4px; padding:6px 10px; background:transparent; color:var(--text2); border:1px solid transparent; border-radius:6px; cursor:pointer; font-size:13px; font-family:var(--font); white-space:nowrap; transition:all .15s; }
+.tbtn:hover { background:var(--bg3); color:var(--text); }
+.tbtn:active { transform:scale(.96); }
+.tbtn.danger:hover { color:var(--danger); border-color:var(--danger); }
+#toolbar .title { font-weight:700; font-size:15px; color:var(--text); margin-right:8px; }
+#toolbar .dot { width:8px; height:8px; border-radius:50%; background:var(--success); margin-right:4px; }
+
+#main { display:flex; flex:1; overflow:hidden; position:relative; }
+
+#sidebar { width:200px; background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; z-index:50; }
+#sidebar .sect-title { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--text2); padding:12px 12px 6px; font-weight:600; }
+.node-palette-item { display:flex; align-items:center; gap:8px; padding:8px 12px; margin:2px 8px; border-radius:6px; cursor:grab; font-size:13px; transition:all .15s; border:1px solid transparent; }
+.node-palette-item:hover { background:var(--bg3); border-color:var(--border); }
+.node-palette-item:active { cursor:grabbing; transform:scale(.97); }
+.node-palette-item .dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
+
+#canvas-wrap { flex:1; position:relative; overflow:hidden; background:radial-gradient(circle at 50% 50%, rgba(88,166,255,.03) 0%, transparent 60%), var(--bg); }
+#canvas-wrap canvas { display:block; position:absolute; top:0; left:0; }
+#canvas-wrap .hint { position:absolute; bottom:20px; left:50%; transform:translateX(-50%); color:var(--text2); font-size:12px; pointer-events:none; opacity:.6; transition:opacity 1s; }
+
+#props { width:300px; background:var(--bg2); border-left:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; z-index:50; overflow-y:auto; }
+#props .p-header { padding:14px 16px; border-bottom:1px solid var(--border); font-weight:600; font-size:14px; display:flex; align-items:center; gap:8px; position:sticky; top:0; background:var(--bg2); z-index:2; }
+#props .p-body { padding:12px 16px; display:flex; flex-direction:column; gap:12px; }
+#props .p-empty { padding:40px 16px; text-align:center; color:var(--text2); font-size:13px; line-height:1.6; }
+.prop-group { display:flex; flex-direction:column; gap:4px; }
+.prop-group label { font-size:11px; color:var(--text2); font-weight:600; text-transform:uppercase; letter-spacing:.5px; }
+.prop-group input, .prop-group select, .prop-group textarea { background:var(--bg3); border:1px solid var(--border); border-radius:6px; padding:8px 10px; color:var(--text); font-size:13px; font-family:var(--font); outline:none; transition:border-color .15s; resize:vertical; width:100%; }
+.prop-group input:focus, .prop-group select:focus, .prop-group textarea:focus { border-color:var(--accent); }
+.prop-group textarea { min-height:60px; font-size:12px; }
+.prop-group select { cursor:pointer; }
+.prop-row { display:flex; gap:8px; }
+.prop-row .prop-group { flex:1; }
+.cred-tag { display:inline-flex; align-items:center; gap:4px; background:var(--bg3); border:1px solid var(--border); border-radius:4px; padding:3px 8px; font-size:11px; font-family:var(--mono); margin:2px; }
+.cred-tag .rm { cursor:pointer; color:var(--danger); font-weight:bold; margin-left:4px; }
+.btn-sm { padding:4px 10px; border-radius:4px; border:1px solid var(--border); background:var(--bg3); color:var(--text); cursor:pointer; font-size:12px; font-family:var(--font); transition:all .15s; }
+.btn-sm:hover { border-color:var(--accent); color:var(--accent); }
+.btn-sm.danger:hover { border-color:var(--danger); color:var(--danger); }
+
+#ctxmenu { display:none; position:fixed; background:var(--bg2); border:1px solid var(--border); border-radius:8px; padding:4px; min-width:180px; z-index:9999; box-shadow:0 8px 32px rgba(0,0,0,.6); }
+.ctx-item { display:flex; align-items:center; gap:8px; padding:8px 12px; border-radius:4px; cursor:pointer; font-size:13px; color:var(--text); transition:background .1s; }
+.ctx-item:hover { background:var(--accent); color:#fff; }
+.ctx-item.danger:hover { background:var(--danger); }
+.ctx-sep { height:1px; background:var(--border); margin:4px 0; }
+
+#statusbar { display:flex; align-items:center; gap:16px; padding:4px 16px; background:var(--bg2); border-top:1px solid var(--border); font-size:11px; color:var(--text2); flex-shrink:0; z-index:100; }
+#statusbar span { display:flex; align-items:center; gap:4px; }
+#statusbar .badge { background:var(--bg3); border-radius:10px; padding:2px 8px; font-weight:600; color:var(--text); }
+#stat-autosave { cursor:pointer; color:var(--success); }
+#stat-autosave:hover { text-decoration:underline; }
+
+#toast { position:fixed; bottom:40px; left:50%; transform:translateX(-50%); background:var(--bg3); color:var(--text); border:1px solid var(--border); border-radius:8px; padding:10px 24px; font-size:13px; z-index:20000; opacity:0; transition:opacity .3s; pointer-events:none; box-shadow:0 4px 16px rgba(0,0,0,.5); }
+#toast.show { opacity:1; }
+
+::-webkit-scrollbar { width:6px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+
+@media (max-width:900px) { #sidebar { width:140px; } #props { width:240px; } }
+@media (max-width:650px) { #sidebar { display:none; } #props { width:100%; position:absolute; right:0; top:0; bottom:0; } }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <span class="dot"></span><span class="title">红队攻击路径管理</span>
+  <span class="sep"></span>
+  <button class="tbtn" onclick="fileNew()" title="新建项目 Ctrl+N">📄 新建</button>
+  <button class="tbtn" onclick="fileSave()" title="保存 Ctrl+S">💾 保存</button>
+  <button class="tbtn" onclick="fileLoad()" title="打开 Ctrl+O">📂 打开</button>
+  <span class="sep"></span>
+  <button class="tbtn" onclick="exportPNG()" title="导出PNG Ctrl+E">📸 导出PNG</button>
+  <button class="tbtn" onclick="exportJSON()" title="导出JSON">📋 导出JSON</button>
+  <span class="sep"></span>
+  <button class="tbtn" id="btn-undo" onclick="undo()" title="撤销 Ctrl+Z">↩ 撤销</button>
+  <button class="tbtn" id="btn-redo" onclick="redo()" title="重做 Ctrl+Y">↪ 重做</button>
+  <button class="tbtn danger" onclick="deleteSelected()" title="删除 Delete">🗑 删除</button>
+  <span class="sep"></span>
+  <button class="tbtn" onclick="zoomFit()" title="适应画布 F">🔍 适应</button>
+  <button class="tbtn" onclick="zoomReset()" title="重置 Ctrl+0">100%</button>
+  <span class="sep"></span>
+  <button class="tbtn" onclick="toggleSidebar()">◧</button>
+  <button class="tbtn" onclick="toggleProps()">◨</button>
+</div>
+
+<div id="main">
+  <div id="sidebar">
+    <div class="sect-title">🚀 攻击者</div>
+    <div class="node-palette-item" data-type="attacker"><span class="dot" style="background:#e74c3c"></span> 攻击入口</div>
+    <div class="sect-title">💀 已控资产</div>
+    <div class="node-palette-item" data-type="compromised"><span class="dot" style="background:#c0392b"></span> 已控主机</div>
+    <div class="node-palette-item" data-type="pivot"><span class="dot" style="background:#e67e22"></span> 跳板机</div>
+    <div class="sect-title">🎯 目标资产</div>
+    <div class="node-palette-item" data-type="target"><span class="dot" style="background:#f39c12"></span> 高价值目标</div>
+    <div class="node-palette-item" data-type="dc"><span class="dot" style="background:#8e44ad"></span> 域控制器</div>
+    <div class="node-palette-item" data-type="webserver"><span class="dot" style="background:#2980b9"></span> Web服务器</div>
+    <div class="node-palette-item" data-type="database"><span class="dot" style="background:#16a085"></span> 数据库服务器</div>
+    <div class="node-palette-item" data-type="workstation"><span class="dot" style="background:#27ae60"></span> 工作站</div>
+    <div class="sect-title">📡 其他</div>
+    <div class="node-palette-item" data-type="custom"><span class="dot" style="background:#7f8c8d"></span> 自定义节点</div>
+  </div>
+  <div id="canvas-wrap"><canvas id="canvas"></canvas><div class="hint" id="hint">💡 从左侧拖拽节点到画布 | 右键节点连线 | 按住空白平移 | 滚轮缩放</div></div>
+  <div id="props">
+    <div class="p-header" id="props-header">📋 属性面板</div>
+    <div class="p-body" id="props-body"><div class="p-empty">👆 点击画布上的节点或连线<br>查看和编辑属性</div></div>
+  </div>
+</div>
+
+<div id="ctxmenu"></div>
+<div id="toast"></div>
+
+<div id="statusbar">
+  <span>📊 节点: <b class="badge" id="stat-nodes">0</b></span>
+  <span>💀 已控: <b class="badge" id="stat-owned">0</b></span>
+  <span>🔗 连线: <b class="badge" id="stat-edges">0</b></span>
+  <span id="stat-autosave" title="点击切换为文件保存（可随HTML移动）">💾 已自动保存</span>
+  <span style="margin-left:auto">缩放: <b id="stat-zoom">100%</b></span>
+  <span>坐标: <b id="stat-pos">-</b></span>
+</div>
+
+<script>
+// ==================== CONSTANTS ====================
+var NODE_TYPES = {
+  attacker:{label:'攻击入口',icon:'⚔️',color:'#e74c3c',bg:'rgba(231,76,60,.15)',radius:28},
+  compromised:{label:'已控主机',icon:'💀',color:'#c0392b',bg:'rgba(192,57,43,.15)',radius:30},
+  pivot:{label:'跳板机',icon:'🔄',color:'#e67e22',bg:'rgba(230,126,34,.15)',radius:26},
+  target:{label:'高价值目标',icon:'🎯',color:'#f39c12',bg:'rgba(243,156,18,.15)',radius:30},
+  dc:{label:'域控制器',icon:'🏰',color:'#8e44ad',bg:'rgba(142,68,173,.15)',radius:30},
+  webserver:{label:'Web服务器',icon:'🌐',color:'#2980b9',bg:'rgba(41,128,185,.15)',radius:26},
+  database:{label:'数据库服务器',icon:'🗄️',color:'#16a085',bg:'rgba(22,160,133,.15)',radius:26},
+  workstation:{label:'工作站',icon:'💻',color:'#27ae60',bg:'rgba(39,174,96,.15)',radius:24},
+  custom:{label:'自定义节点',icon:'📡',color:'#7f8c8d',bg:'rgba(127,140,141,.15)',radius:24}
+};
+var STATUS_MAP = {
+  owned:{label:'已控',color:'#f85149'},target:{label:'目标',color:'#d29922'},
+  pivot:{label:'跳板',color:'#f0883e'},unknown:{label:'未知',color:'#8b949e'}
+};
+var EDGE_METHODS = ['PTH (Pass-the-Hash)','PTK (Pass-the-Key)','Overpass-the-Hash','SMB','WMI','WinRM','PsExec','RDP','SSH','SQL','HTTP/HTTPS','DNS隧道','计划任务','服务','注册表','DCOM','自定义'];
+
+// ==================== STATE ====================
+var project = { name:'未命名项目', nodes:[], edges:[] };
+var selectedId = null, selectedType = null, hoveredId = null, connectingFrom = null, tunnelConnectingFrom = null;
+var viewport = { x:0, y:0, zoom:1 };
+var isDragging = false, dragTarget = null, dragStart = {x:0,y:0}, dragOrigPos = {x:0,y:0};
+var isPanning = false, panStart = {x:0,y:0}, viewStart = {x:0,y:0};
+var mousePos = {x:0,y:0};
+var undoStack = [], redoStack = [], MAX_UNDO = 200;
+
+// ==================== DOM ====================
+var canvasWrap = document.getElementById('canvas-wrap');
+var canvasEl = document.getElementById('canvas');
+var ctx = canvasEl.getContext('2d');
+var hintEl = document.getElementById('hint');
+var propsHeader = document.getElementById('props-header');
+var propsBody = document.getElementById('props-body');
+var ctxmenu = document.getElementById('ctxmenu');
+var toastEl = document.getElementById('toast');
+
+// ==================== UTILS ====================
+function genId() { return 'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function screenToWorld(sx,sy) { return { x:(sx-viewport.x)/viewport.zoom, y:(sy-viewport.y)/viewport.zoom }; }
+function dist(x1,y1,x2,y2) { return Math.hypot(x2-x1,y2-y1); }
+function showToast(msg) {
+  toastEl.textContent = msg; toastEl.classList.add('show');
+  clearTimeout(toastEl._t); toastEl._t = setTimeout(function(){ toastEl.classList.remove('show'); },2000);
+}
+function pushUndo() {
+  undoStack.push(JSON.parse(JSON.stringify({nodes:project.nodes,edges:project.edges})));
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack = []; updateUndoRedoButtons();
+}
+function findNode(id) { return project.nodes.find(function(n){return n.id===id;}); }
+function findEdge(id) { return project.edges.find(function(e){return e.id===id;}); }
+
+// ==================== DATA OPS ====================
+function addNode(type,x,y) {
+  var d = NODE_TYPES[type];
+  var n = {id:genId(),type:type,label:d.label,ip:'',hostname:'',os:'',
+    status:type==='attacker'?'owned':(type==='target'||type==='dc'?'target':'unknown'),
+    notes:'',credentials:[],tunnel:'',x:x,y:y};
+  project.nodes.push(n); pushUndo(); return n;
+}
+function addEdge(sid,tid,isTunnel) {
+  if (sid===tid) return null;
+  // For non-tunnel edges: block duplicate between same pair
+  if (!isTunnel) {
+    var ex = project.edges.find(function(e){return (e.source===sid&&e.target===tid)||(e.source===tid&&e.target===sid);});
+    if (ex) return null;
+  }
+  // Tunnel edges always allow — they stack with curve avoidance
+  var e = {id:genId(),source:sid,target:tid,method:'SSH',label:'',payload:'',tunnel:'',tunnelInfo:{tool:'',localAddr:'',remoteAddr:'',proto:''}};
+  project.edges.push(e); pushUndo(); return e;
+}
+function deleteNode(id) {
+  project.nodes = project.nodes.filter(function(n){return n.id!==id;});
+  project.edges = project.edges.filter(function(e){return e.source!==id&&e.target!==id;});
+  if (selectedId===id) { selectedId=null; selectedType=null; }
+  if (connectingFrom===id) connectingFrom=null;
+  if (tunnelConnectingFrom===id) tunnelConnectingFrom=null;
+  pushUndo();
+}
+function deleteEdge(id) {
+  project.edges = project.edges.filter(function(e){return e.id!==id;});
+  if (selectedId===id) { selectedId=null; selectedType=null; }
+  pushUndo();
+}
+
+// ==================== UNDO/REDO ====================
+function undo() {
+  if (!undoStack.length) return;
+  redoStack.push(JSON.parse(JSON.stringify({nodes:project.nodes,edges:project.edges})));
+  var p = undoStack.pop(); project.nodes = p.nodes; project.edges = p.edges;
+  selectedId=null; selectedType=null; updateUndoRedoButtons(); updateAll(); showToast('已撤销 ↩');
+}
+function redo() {
+  if (!redoStack.length) return;
+  undoStack.push(JSON.parse(JSON.stringify({nodes:project.nodes,edges:project.edges})));
+  var p = redoStack.pop(); project.nodes = p.nodes; project.edges = p.edges;
+  selectedId=null; selectedType=null; updateUndoRedoButtons(); updateAll(); showToast('已重做 ↪');
+}
+function updateUndoRedoButtons() {
+  document.getElementById('btn-undo').style.opacity = undoStack.length?1:.4;
+  document.getElementById('btn-redo').style.opacity = redoStack.length?1:.4;
+}
+
+// ==================== RENDER ====================
+function resizeCanvas() {
+  var r = canvasWrap.getBoundingClientRect();
+  canvasEl.width = r.width * devicePixelRatio;
+  canvasEl.height = r.height * devicePixelRatio;
+  canvasEl.style.width = r.width+'px';
+  canvasEl.style.height = r.height+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+function applyViewport() {
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  ctx.translate(viewport.x,viewport.y); ctx.scale(viewport.zoom,viewport.zoom);
+}
+function drawGrid() {
+  var gs=40, w=canvasEl.width/devicePixelRatio, h=canvasEl.height/devicePixelRatio;
+  var wx=-viewport.x/viewport.zoom, wy=-viewport.y/viewport.zoom;
+  var ww=w/viewport.zoom, wh=h/viewport.zoom;
+  ctx.strokeStyle='rgba(48,54,61,.4)'; ctx.lineWidth=.5; ctx.beginPath();
+  for (var x=Math.floor(wx/gs)*gs; x<=wx+ww+gs; x+=gs) { ctx.moveTo(x,wy); ctx.lineTo(x,wy+wh+gs); }
+  for (var y=Math.floor(wy/gs)*gs; y<=wy+wh+gs; y+=gs) { ctx.moveTo(wx,y); ctx.lineTo(wx+ww+gs,y); }
+  ctx.stroke();
+}
+function drawEdgeShape(edge) {
+  var sn=findNode(edge.source), tn=findNode(edge.target);
+  if (!sn||!tn) return;
+  var sr=NODE_TYPES[sn.type].radius, tr=NODE_TYPES[tn.type].radius;
+  var dx=tn.x-sn.x, dy=tn.y-sn.y, d=Math.hypot(dx,dy);
+  if (!d) return;
+  var nx=dx/d, ny=dy/d;
+  var x1=sn.x+nx*sr, y1=sn.y+ny*sr, x2=tn.x-nx*tr, y2=tn.y-ny*tr;
+  var sel=selectedId===edge.id, hov=hoveredId===edge.id;
+  var isTunnel = edge.tunnel==='forward'||edge.tunnel==='reverse';
+  var color=sel?'#58a6ff':(hov?'#79c0ff':(isTunnel?'#39d2c0':'#484f58'));
+  var lw=sel?3:(hov?2.5:(isTunnel?2.5:2));
+
+  // Tunnel edges use bezier curves; normal edges are straight
+  var midX, midY, endAng;
+  if (isTunnel) {
+    // Vary bulge per tunnel pair index to avoid straight edges and other tunnels
+    var ti = edge._ti || 0;
+    var dir = ti % 2 === 0 ? 1 : -1;
+    var bulge = 60 + Math.floor(ti / 2) * 65;
+    var px = -ny * bulge * dir, py = nx * bulge * dir;
+    var cx = (x1+x2)/2 + px, cy = (y1+y2)/2 + py; // control point
+    midX = (x1 + x2 + cx) / 3; midY = (y1 + y2 + cy) / 3; // approx midpoint on curve
+    // Tangent at endpoint for arrow
+    endAng = Math.atan2(y2-cy, x2-cx);
+
+    ctx.strokeStyle=color; ctx.lineWidth=lw;
+    if (sel) ctx.setLineDash([8,4]); else ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo(cx,cy,x2,y2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Tunnel tide: animated dashes along same curve
+    var tideOff = (Date.now()/40) % 20;
+    if (edge.tunnel==='reverse') tideOff = -tideOff;
+    ctx.strokeStyle='rgba(57,210,192,.7)'; ctx.lineWidth=4;
+    ctx.setLineDash([6,14]); ctx.lineDashOffset = tideOff;
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.quadraticCurveTo(cx,cy,x2,y2); ctx.stroke();
+    ctx.setLineDash([]);
+  } else {
+    midX = (x1+x2)/2; midY = (y1+y2)/2;
+    endAng = Math.atan2(dy,dx);
+
+    ctx.strokeStyle=color; ctx.lineWidth=lw;
+    if (sel) ctx.setLineDash([8,4]); else ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  var as=10;
+  ctx.fillStyle=color; ctx.beginPath();
+  ctx.moveTo(x2,y2);
+  ctx.lineTo(x2-as*Math.cos(endAng-.45),y2-as*Math.sin(endAng-.45));
+  ctx.lineTo(x2-as*Math.cos(endAng+.45),y2-as*Math.sin(endAng+.45));
+  ctx.closePath(); ctx.fill();
+
+  var lbl=edge.label||edge.method||'';
+  if (lbl) {
+    var mx=midX, my=midY, oy=-12;
+    ctx.font='bold 11px "PingFang SC","Microsoft YaHei",sans-serif';
+    var tw=ctx.measureText(lbl).width, pad=6;
+    ctx.fillStyle='rgba(13,17,23,.85)';
+    ctx.fillRect(mx-tw/2-pad,my+oy-9,tw+pad*2,18);
+    ctx.strokeStyle=color; ctx.lineWidth=1;
+    ctx.strokeRect(mx-tw/2-pad,my+oy-9,tw+pad*2,18);
+    ctx.fillStyle=color; ctx.textAlign='center';
+    ctx.fillText(lbl,mx,my+oy+3);
+    if (edge.payload) {
+      var py = my+oy+18;
+      var ptxt = edge.payload.length > 20 ? edge.payload.slice(0,20)+'...' : edge.payload;
+      ctx.font='9px "PingFang SC","Microsoft YaHei",sans-serif';
+      ctx.fillStyle='rgba(63,185,80,.85)';
+      ctx.fillText('📋 '+ptxt, mx, py);
+    }
+    if (isTunnel) {
+      var tpy = edge.payload ? my+oy+32 : my+oy+18;
+      ctx.font='9px "PingFang SC","Microsoft YaHei",sans-serif';
+      ctx.fillStyle='rgba(57,210,192,.9)';
+      ctx.fillText('🌊 '+(edge.tunnel==='forward'?'正向':'反向'), mx, tpy);
+    }
+  }
+}
+function drawNodeShape(node) {
+  var d=NODE_TYPES[node.type], r=d.radius;
+  var sel=selectedId===node.id, hov=hoveredId===node.id, con=connectingFrom===node.id, tcon=tunnelConnectingFrom===node.id;
+
+  if (sel||con||tcon) { ctx.shadowColor=tcon?'#39d2c0':(con?'#f0883e':'#58a6ff'); ctx.shadowBlur=20; }
+  ctx.beginPath(); ctx.arc(node.x,node.y,r+4,0,Math.PI*2); ctx.fillStyle=d.bg; ctx.fill();
+  ctx.beginPath(); ctx.arc(node.x,node.y,r+2,0,Math.PI*2);
+  ctx.strokeStyle=sel?'#58a6ff':(hov?'#79c0ff':(tcon?'#39d2c0':(con?'#f0883e':d.color)));
+  ctx.lineWidth=sel?3:(hov?2.5:2); ctx.stroke();
+  ctx.shadowColor='transparent'; ctx.shadowBlur=0;
+
+  var g=ctx.createRadialGradient(node.x-r*.3,node.y-r*.3,0,node.x,node.y,r);
+  g.addColorStop(0,'rgba(255,255,255,.08)'); g.addColorStop(1,'rgba(0,0,0,.2)');
+  ctx.beginPath(); ctx.arc(node.x,node.y,r,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=1; ctx.stroke();
+
+  ctx.font=(r*.7)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(d.icon,node.x,node.y-2);
+
+  // Status emoji badge (top-left)
+  var statusIcon = {owned:'💀',target:'🎯',pivot:'⛹️',unknown:'❓'};
+  var si = statusIcon[node.status] || '❓';
+  ctx.font='13px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(si, node.x-r+2, node.y-r+1);
+
+  ctx.font='bold 12px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.fillStyle='#e6edf3'; ctx.textAlign='center';
+  ctx.fillText(node.label,node.x,node.y+r+14);
+
+  if (node.ip||node.hostname) {
+    ctx.font='10px "SF Mono","Consolas",monospace'; ctx.fillStyle='#8b949e';
+    ctx.fillText(node.ip||node.hostname,node.x,node.y+r+28);
+  }
+  if (node.credentials&&node.credentials.length) {
+    ctx.font='10px sans-serif'; ctx.fillStyle='#d29922';
+    ctx.fillText('🔑'+node.credentials.length,node.x+r+4,node.y-r-2);
+  }
+}
+function render() {
+  var w=canvasEl.width/devicePixelRatio, h=canvasEl.height/devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  ctx.clearRect(0,0,w,h); applyViewport(); drawGrid();
+
+  // Assign tunnel-only pair indices for curve avoidance (excludes straight edges)
+  var tunnelPairIdx = {};
+  for (var ei = 0; ei < project.edges.length; ei++) {
+    var pe = project.edges[ei];
+    if (pe.tunnel !== 'forward' && pe.tunnel !== 'reverse') { pe._ti = undefined; continue; }
+    var pk = [pe.source, pe.target].sort().join('::');
+    if (!tunnelPairIdx[pk]) tunnelPairIdx[pk] = [];
+    tunnelPairIdx[pk].push(pe);
+  }
+  for (var pk in tunnelPairIdx) {
+    for (var pj = 0; pj < tunnelPairIdx[pk].length; pj++) {
+      tunnelPairIdx[pk][pj]._ti = pj;
+      tunnelPairIdx[pk][pj]._tt = tunnelPairIdx[pk].length;
+    }
+  }
+
+  for (var i=0; i<project.edges.length; i++) drawEdgeShape(project.edges[i]);
+
+  if (connectingFrom) {
+    var sn=findNode(connectingFrom);
+    if (sn) {
+      var mp=screenToWorld(mousePos.x,mousePos.y);
+      ctx.strokeStyle='#f0883e'; ctx.lineWidth=2; ctx.setLineDash([6,3]);
+      ctx.beginPath(); ctx.moveTo(sn.x,sn.y); ctx.lineTo(mp.x,mp.y); ctx.stroke();
+      ctx.setLineDash([]);
+      var pr=8+Math.sin(Date.now()/1000*3)*4;
+      ctx.beginPath(); ctx.arc(mp.x,mp.y,pr,0,Math.PI*2);
+      ctx.strokeStyle='rgba(240,136,62,.6)'; ctx.lineWidth=2; ctx.stroke();
+    }
+  }
+  if (tunnelConnectingFrom) {
+    var tsn=findNode(tunnelConnectingFrom);
+    if (tsn) {
+      var tmp=screenToWorld(mousePos.x,mousePos.y);
+      var tdx=tmp.x-tsn.x, tdy=tmp.y-tsn.y, tdist=Math.hypot(tdx,tdy)||1;
+      var tnx=tdx/tdist, tny=tdy/tdist;
+      var tbulge=60, tpx=-tny*tbulge, tpy=tnx*tbulge;
+      var tcx=(tsn.x+tmp.x)/2+tpx, tcy=(tsn.y+tmp.y)/2+tpy;
+      ctx.strokeStyle='rgba(57,210,192,.8)'; ctx.lineWidth=2; ctx.setLineDash([6,3]);
+      ctx.beginPath(); ctx.moveTo(tsn.x,tsn.y); ctx.quadraticCurveTo(tcx,tcy,tmp.x,tmp.y); ctx.stroke();
+      ctx.setLineDash([]);
+      var tpr=8+Math.sin(Date.now()/1000*3)*4;
+      ctx.beginPath(); ctx.arc(tmp.x,tmp.y,tpr,0,Math.PI*2);
+      ctx.strokeStyle='rgba(57,210,192,.6)'; ctx.lineWidth=2; ctx.stroke();
+    }
+  }
+
+  for (var i2=0; i2<project.nodes.length; i2++) drawNodeShape(project.nodes[i2]);
+
+  if (selectedId&&selectedType==='node') {
+    var node=findNode(selectedId);
+    if (node) { var r=NODE_TYPES[node.type].radius;
+      ctx.strokeStyle='#58a6ff'; ctx.lineWidth=2; ctx.setLineDash([4,4]);
+      ctx.strokeRect(node.x-r-8,node.y-r-8,(r+8)*2,(r+8)*2); ctx.setLineDash([]); }
+  }
+}
+
+// ==================== HIT TEST ====================
+function hitTest(wx,wy) {
+  for (var i=project.nodes.length-1; i>=0; i--) {
+    var n=project.nodes[i];
+    if (dist(wx,wy,n.x,n.y)<=NODE_TYPES[n.type].radius+6) return {type:'node',id:n.id};
+  }
+  for (var i2=project.edges.length-1; i2>=0; i2--) {
+    var e=project.edges[i2], sn=findNode(e.source), tn=findNode(e.target);
+    if (!sn||!tn) continue;
+    if (dist(wx,wy,sn.x,sn.y)+dist(wx,wy,tn.x,tn.y)-dist(sn.x,sn.y,tn.x,tn.y)<8) return {type:'edge',id:e.id};
+  }
+  return null;
+}
+
+// ==================== PROPS PANEL ====================
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function showProps() {
+  if (!selectedId) { propsHeader.innerHTML='📋 属性面板'; propsBody.innerHTML='<div class="p-empty">👆 点击画布上的节点或连线<br>查看和编辑属性</div>'; return; }
+
+  if (selectedType==='node') {
+    var node=findNode(selectedId); if (!node) return;
+    var d=NODE_TYPES[node.type];
+    propsHeader.innerHTML = d.icon+' '+d.label+' · <span style="color:'+STATUS_MAP[node.status].color+'">'+STATUS_MAP[node.status].label+'</span>';
+
+    var topts=''; Object.keys(NODE_TYPES).forEach(function(k){var v=NODE_TYPES[k]; topts+='<option value="'+k+'" '+(node.type===k?'selected':'')+'>'+v.icon+' '+v.label+'</option>';});
+    var sopts=''; Object.keys(STATUS_MAP).forEach(function(k){var v=STATUS_MAP[k]; sopts+='<option value="'+k+'" '+(node.status===k?'selected':'')+'>'+v.label+'</option>';});
+    var creds=(node.credentials||[]).map(function(c,i){return '<span class="cred-tag">'+escHtml(c)+'<span class="rm" onclick="removeCred(\''+node.id+'\','+i+')">×</span></span>';}).join('');
+
+    propsBody.innerHTML =
+      '<div class="prop-row"><div class="prop-group"><label>标签</label><input value="'+escHtml(node.label)+'" onchange="updateNP(\''+node.id+'\',\'label\',this.value)"></div><div class="prop-group"><label>类型</label><select onchange="changeNT(\''+node.id+'\',this.value)">'+topts+'</select></div></div>'+
+      '<div class="prop-row"><div class="prop-group"><label>IP</label><input value="'+escHtml(node.ip)+'" onchange="updateNP(\''+node.id+'\',\'ip\',this.value)" placeholder="10.0.1.5"></div><div class="prop-group"><label>主机名</label><input value="'+escHtml(node.hostname)+'" onchange="updateNP(\''+node.id+'\',\'hostname\',this.value)" placeholder="WEB-PROD-01"></div></div>'+
+      '<div class="prop-row"><div class="prop-group"><label>操作系统</label><input value="'+escHtml(node.os)+'" onchange="updateNP(\''+node.id+'\',\'os\',this.value)" placeholder="Windows Server 2019"></div><div class="prop-group"><label>状态</label><select onchange="updateNP(\''+node.id+'\',\'status\',this.value)">'+sopts+'</select></div></div>'+
+      '<div class="prop-group"><label>备注</label><textarea onchange="updateNP(\''+node.id+'\',\'notes\',this.value)" placeholder="漏洞、利用方式...">'+escHtml(node.notes||'')+'</textarea></div>'+
+      '<div class="prop-group"><label>凭据 🔑</label><div style="display:flex;gap:6px"><input id="cred-input" placeholder="user:pass 或 hash" onkeydown="if(event.key===\'Enter\')addCred(\''+node.id+'\')" style="flex:1"><button class="btn-sm" onclick="addCred(\''+node.id+'\')">添加</button></div><div style="margin-top:4px">'+(creds||'<span style="color:var(--text2);font-size:11px">暂无</span>')+'</div></div>'+
+      '<div class="prop-group"><label>🌊 隧道连接信息</label><textarea onchange="updateNP(\''+node.id+'\',\'tunnel\',this.value)" placeholder="如: frpc 反向代理 0.0.0.0:1080 → VPS:7000&#10;或: Neo-reGeorg tunnel http://VPS/tunnel.php">'+escHtml(node.tunnel||'')+'</textarea></div>'+
+      '<button class="btn-sm danger" style="margin-top:8px" onclick="deleteNode(\''+node.id+'\');showProps()">🗑 删除</button>';
+  } else if (selectedType==='edge') {
+    var edge=findEdge(selectedId); if (!edge) return;
+    var sn=findNode(edge.source), tn=findNode(edge.target);
+    propsHeader.innerHTML='🔗 连线 · '+(sn?sn.label:'?')+' → '+(tn?tn.label:'?');
+    var mopts=''; EDGE_METHODS.forEach(function(m){mopts+='<option value="'+m+'" '+(edge.method===m?'selected':'')+'>'+m+'</option>';});
+    var ti=edge.tunnelInfo||{};
+    var tsel='';['','forward','reverse'].forEach(function(v){var n=v==='forward'?'正向 (出网)':(v==='reverse'?'反向 (入网)':'无隧道'); tsel+='<option value="'+v+'" '+(edge.tunnel===v?'selected':'')+'>'+n+'</option>';});
+    var tunnelDetailHTML = (edge.tunnel==='forward'||edge.tunnel==='reverse') ?
+      '<div class="prop-group"><label>🌊 隧道工具</label><input value="'+escHtml(ti.tool||'')+'" onchange="updateTI(\''+edge.id+'\',\'tool\',this.value)" placeholder="frp / chisel / Neo-reGeorg / SSH"></div>'+
+      '<div class="prop-row"><div class="prop-group"><label>本地地址</label><input value="'+escHtml(ti.localAddr||'')+'" onchange="updateTI(\''+edge.id+'\',\'localAddr\',this.value)" placeholder="0.0.0.0:1080"></div><div class="prop-group"><label>远程地址</label><input value="'+escHtml(ti.remoteAddr||'')+'" onchange="updateTI(\''+edge.id+'\',\'remoteAddr\',this.value)" placeholder="10.0.1.5:80"></div></div>'+
+      '<div class="prop-row"><div class="prop-group"><label>隧道类型</label><select onchange="updateTI(\''+edge.id+'\',\'proto\',this.value)"><option value="" '+(ti.proto===''?'selected':'')+'>-</option><option value="TCP" '+(ti.proto==='TCP'?'selected':'')+'>TCP</option><option value="SOCKS5" '+(ti.proto==='SOCKS5'?'selected':'')+'>SOCKS5</option><option value="HTTP" '+(ti.proto==='HTTP'?'selected':'')+'>HTTP</option><option value="DNS" '+(ti.proto==='DNS'?'selected':'')+'>DNS</option></select></div></div>'
+      : '';
+    propsBody.innerHTML =
+      '<div class="prop-group"><label>标签</label><input value="'+escHtml(edge.label)+'" onchange="updateEP(\''+edge.id+'\',\'label\',this.value)" placeholder="如:横向移动到DC"></div>'+
+      '<div class="prop-group"><label>横向移动方式</label><select onchange="updateEP(\''+edge.id+'\',\'method\',this.value)">'+mopts+'</select></div>'+
+      '<div class="prop-row"><div class="prop-group"><label>隧道</label><select onchange="updateEP(\''+edge.id+'\',\'tunnel\',this.value);showProps()" id="tunnel-sel-'+edge.id+'">'+tsel+'</select></div></div>'+
+      tunnelDetailHTML+
+      '<div class="prop-group"><label>Payload / 凭据</label><textarea onchange="updateEP(\''+edge.id+'\',\'payload\',this.value)" placeholder="如:mimikatz.exe sekurlsa::logonpasswords 或 wmiexec.py user:pass@target">'+escHtml(edge.payload||'')+'</textarea></div>'+
+      '<div class="prop-row" style="font-size:12px;color:var(--text2)"><span>从: <b>'+(sn?sn.label:'?')+'</b></span><span>到: <b>'+(tn?tn.label:'?')+'</b></span></div>'+
+      '<button class="btn-sm danger" style="margin-top:8px" onclick="deleteEdge(\''+edge.id+'\');showProps()">🗑 删除</button>';
+  }
+}
+function updateNP(id,prop,val) { var n=findNode(id); if(!n)return; pushUndo(); n[prop]=val; updateAll(); }
+function changeNT(id,t) { var n=findNode(id); if(!n)return; pushUndo(); n.type=t; updateAll(); showProps(); }
+function updateEP(id,prop,val) { var e=findEdge(id); if(!e)return; pushUndo(); e[prop]=val; updateAll(); }
+function updateTI(id,prop,val) { var e=findEdge(id); if(!e)return; if(!e.tunnelInfo)e.tunnelInfo={}; pushUndo(); e.tunnelInfo[prop]=val; updateAll(); }
+function addCred(nid) {
+  var inp=document.getElementById('cred-input'); if(!inp)return;
+  var v=inp.value.trim(); if(!v)return;
+  var n=findNode(nid); if(!n)return;
+  pushUndo(); if(!n.credentials)n.credentials=[]; n.credentials.push(v); inp.value=''; updateAll(); showProps();
+}
+function removeCred(nid,idx) { var n=findNode(nid); if(!n)return; pushUndo(); n.credentials.splice(idx,1); updateAll(); showProps(); }
+
+// ==================== CONTEXT MENU ====================
+function showCtxMenu(x,y,items) {
+  ctxmenu.innerHTML = items.map(function(it){
+    if (it==='-') return '<div class="ctx-sep"></div>';
+    return '<div class="ctx-item'+(it.danger?' danger':'')+'" data-action="'+(it.action||'')+'">'+(it.icon||'')+' '+it.label+'</div>';
+  }).join('');
+  ctxmenu.style.display='block';
+  ctxmenu.style.left=Math.min(x,window.innerWidth-200)+'px';
+  ctxmenu.style.top=Math.min(y,window.innerHeight-ctxmenu.offsetHeight-10)+'px';
+  ctxmenu.querySelectorAll('.ctx-item').forEach(function(el){el.onclick=function(){handleCA(el.dataset.action);hideCM();};});
+}
+function hideCM() { ctxmenu.style.display='none'; }
+function handleCA(action) {
+  if (!action) return;
+  var p=action.split(':'), cmd=p[0], a=p.slice(1);
+  switch(cmd) {
+    case 'select': selectedId=a[1]; selectedType=a[0]; connectingFrom=null; showProps(); updateAll(); break;
+    case 'connect': connectingFrom=a[0]; selectedId=null;selectedType=null; showProps(); showToast('点击目标节点完成连线, Esc取消'); updateAll(); break;
+    case 'setstatus': { var n=findNode(a[0]); if(n){pushUndo();n.status=a[1];updateAll();showProps();} break; }
+    case 'delete': if(a[0]==='node')deleteNode(a[1]);else deleteEdge(a[1]);showProps();updateAll();break;
+    case 'duplicate': { var n2=findNode(a[0]); if(n2){pushUndo();var nn=JSON.parse(JSON.stringify(n2));nn.id=genId();nn.x+=60;nn.y+=60;nn.label+='(副本)';project.nodes.push(nn);updateAll();showToast('已复制');} break; }
+    case 'addnode': { var nn2=addNode(a[0],parseFloat(a[1]),parseFloat(a[2])); selectedId=nn2.id;selectedType='node';showProps();updateAll();showToast('已添加: '+NODE_TYPES[a[0]].label); break; }
+    case 'tunnelConnect': tunnelConnectingFrom=a[0]; connectingFrom=null; selectedId=null;selectedType=null; showProps(); showToast('🌊 点击目标节点完成隧道连接, Esc取消'); updateAll(); break;
+  }
+}
+
+// ==================== INTERACTION ====================
+canvasWrap.addEventListener('mousedown',function(e){
+  if (e.button===1) { isPanning=true; panStart={x:e.clientX,y:e.clientY}; viewStart={x:viewport.x,y:viewport.y}; canvasWrap.style.cursor='grabbing'; return; }
+  if (e.button!==0) return;
+  var r=canvasWrap.getBoundingClientRect(), sx=e.clientX-r.left, sy=e.clientY-r.top;
+  var w=screenToWorld(sx,sy), hit=hitTest(w.x,w.y);
+
+  if (connectingFrom&&hit&&hit.type==='node'&&hit.id!==connectingFrom) {
+    var eg=addEdge(connectingFrom,hit.id);
+    if (eg) { connectingFrom=null; selectedId=eg.id; selectedType='edge'; showProps(); showToast('连线已创建'); }
+    return;
+  }
+  if (tunnelConnectingFrom) {
+    if (hit&&hit.type==='node'&&hit.id!==tunnelConnectingFrom) {
+      var teg=addEdge(tunnelConnectingFrom,hit.id,true);
+      if (teg) { teg.tunnel='forward'; teg.label='隧道'; teg.method='自定义'; tunnelConnectingFrom=null; selectedId=teg.id; selectedType='edge'; showProps(); showToast('🌊 隧道已创建 (可在右侧面板调整)'); }
+      return;
+    }
+    // Clicked on same node or empty → cancel
+    tunnelConnectingFrom=null; showToast('已取消隧道连接');
+  }
+
+  if (hit&&hit.type==='node') {
+    selectedId=hit.id; selectedType='node'; connectingFrom=null; showProps();
+    dragTarget=hit.id; isDragging=false;
+    var n=findNode(hit.id);
+    dragStart={x:e.clientX,y:e.clientY}; dragOrigPos={x:n.x,y:n.y};
+    canvasWrap.style.cursor='grabbing';
+  } else if (hit&&hit.type==='edge') {
+    selectedId=hit.id; selectedType='edge'; connectingFrom=null; showProps();
+  } else {
+    selectedId=null; selectedType=null; connectingFrom=null; showProps();
+    isPanning=true; panStart={x:e.clientX,y:e.clientY}; viewStart={x:viewport.x,y:viewport.y};
+    canvasWrap.style.cursor='grab';
+  }
+});
+
+window.addEventListener('mousemove',function(e){
+  var r=canvasWrap.getBoundingClientRect();
+  if (!dragTarget&&!isPanning&&!connectingFrom&&!tunnelConnectingFrom) {
+    if (e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom) return;
+  }
+  mousePos={x:e.clientX-r.left,y:e.clientY-r.top};
+  var w=screenToWorld(mousePos.x,mousePos.y), hit=hitTest(w.x,w.y);
+  hoveredId=hit?hit.id:null;
+
+  if (dragTarget) {
+    var dx=(e.clientX-dragStart.x)/viewport.zoom, dy=(e.clientY-dragStart.y)/viewport.zoom;
+    var n=findNode(dragTarget);
+    if (n&&(Math.abs(e.clientX-dragStart.x)>2||Math.abs(e.clientY-dragStart.y)>2)) {
+      if (!isDragging) { isDragging=true; pushUndo(); }
+      n.x=dragOrigPos.x+dx; n.y=dragOrigPos.y+dy;
+    }
+  } else if (isPanning) {
+    viewport.x=viewStart.x+(e.clientX-panStart.x);
+    viewport.y=viewStart.y+(e.clientY-panStart.y);
+  }
+  document.getElementById('stat-pos').textContent='('+Math.round(w.x)+', '+Math.round(w.y)+')';
+  if (!isDragging&&!isPanning&&!dragTarget) canvasWrap.style.cursor=connectingFrom||tunnelConnectingFrom?'crosshair':(hit?'pointer':'default');
+  updateAll();
+});
+
+window.addEventListener('mouseup',function(){dragTarget=null;isDragging=false;isPanning=false;canvasWrap.style.cursor=connectingFrom||tunnelConnectingFrom?'crosshair':'default';});
+canvasWrap.addEventListener('wheel',function(e){
+  e.preventDefault();
+  var r=canvasWrap.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top;
+  var wb=screenToWorld(mx,my);
+  viewport.zoom=Math.max(.1,Math.min(5,viewport.zoom*(e.deltaY<0?1.1:.9)));
+  var wa=screenToWorld(mx,my);
+  viewport.x+=(wa.x-wb.x)*viewport.zoom; viewport.y+=(wa.y-wb.y)*viewport.zoom;
+  document.getElementById('stat-zoom').textContent=Math.round(viewport.zoom*100)+'%';
+  updateAll();
+},{passive:false});
+canvasWrap.addEventListener('contextmenu',function(e){
+  e.preventDefault();
+  var r=canvasWrap.getBoundingClientRect(), w=screenToWorld(e.clientX-r.left,e.clientY-r.top), hit=hitTest(w.x,w.y);
+  if (hit&&hit.type==='node') {
+    var n=findNode(hit.id);
+    var sitems=Object.keys(STATUS_MAP).map(function(k){var v=STATUS_MAP[k];return{label:(n.status===k?'✅ ':'')+'标记为'+v.label,icon:'🏷️',action:'setstatus:'+hit.id+':'+k};});
+    showCtxMenu(e.clientX,e.clientY,[{label:'编辑 "'+escHtml(n.label)+'"',icon:'✏️',action:'select:node:'+hit.id},'-',{label:'🔗 连线到...',action:'connect:'+hit.id},{label:'🌊 隧道连接',action:'tunnelConnect:'+hit.id},'-'].concat(sitems).concat(['-',{label:'📋 复制',action:'duplicate:'+hit.id},{label:'🗑 删除',icon:'🗑️',danger:true,action:'delete:node:'+hit.id}]));
+  } else if (hit&&hit.type==='edge') {
+    showCtxMenu(e.clientX,e.clientY,[{label:'编辑',icon:'✏️',action:'select:edge:'+hit.id},'-',{label:'🗑 删除',icon:'🗑️',danger:true,action:'delete:edge:'+hit.id}]);
+  } else {
+    var pos=w;
+    showCtxMenu(e.clientX,e.clientY,[{label:'📡 自定义节点',action:'addnode:custom:'+pos.x+':'+pos.y},{label:'💻 工作站',action:'addnode:workstation:'+pos.x+':'+pos.y},{label:'💀 已控主机',action:'addnode:compromised:'+pos.x+':'+pos.y},{label:'🎯 高价值目标',action:'addnode:target:'+pos.x+':'+pos.y}]);
+  }
+});
+canvasWrap.addEventListener('dblclick',function(e){
+  var r=canvasWrap.getBoundingClientRect(), w=screenToWorld(e.clientX-r.left,e.clientY-r.top), hit=hitTest(w.x,w.y);
+  if (hit&&hit.type==='node') { selectedId=hit.id; selectedType='node'; showProps(); setTimeout(function(){var inp=propsBody.querySelector('input');if(inp)inp.focus();},50); }
+});
+
+// ==================== SIDEBAR DRAG ====================
+document.querySelectorAll('.node-palette-item').forEach(function(item){
+  item.addEventListener('mousedown',function(e){
+    e.preventDefault();
+    var type=item.dataset.type, ghost=document.createElement('div');
+    ghost.style.cssText='position:fixed;pointer-events:none;z-index:9999;width:40px;height:40px;border-radius:50%;background:'+NODE_TYPES[type].color+';opacity:.7;display:flex;align-items:center;justify-content:center;font-size:18px;';
+    ghost.textContent=NODE_TYPES[type].icon;
+    ghost.style.left=(e.clientX-20)+'px'; ghost.style.top=(e.clientY-20)+'px';
+    document.body.appendChild(ghost);
+    var mv=function(ev){ghost.style.left=(ev.clientX-20)+'px';ghost.style.top=(ev.clientY-20)+'px';};
+    var up=function(ev){
+      document.removeEventListener('mousemove',mv); document.removeEventListener('mouseup',up); ghost.remove();
+      var cr=canvasWrap.getBoundingClientRect();
+      if (ev.clientX>=cr.left&&ev.clientX<=cr.right&&ev.clientY>=cr.top&&ev.clientY<=cr.bottom) {
+        var w=screenToWorld(ev.clientX-cr.left,ev.clientY-cr.top);
+        pushUndo(); var n=addNode(type,w.x,w.y);
+        selectedId=n.id; selectedType='node'; showProps(); showToast('已添加: '+NODE_TYPES[type].label);
+      }
+    };
+    document.addEventListener('mousemove',mv); document.addEventListener('mouseup',up);
+  });
+});
+
+// ==================== KEYBOARD ====================
+window.addEventListener('keydown',function(e){
+  if (e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA'||e.target.tagName==='SELECT') return;
+  var c=e.ctrlKey||e.metaKey;
+  if (c&&e.key==='z') { e.preventDefault(); undo(); }
+  else if (c&&e.key==='y') { e.preventDefault(); redo(); }
+  else if (c&&e.key==='s') { e.preventDefault(); fileSave(); }
+  else if (c&&e.key==='o') { e.preventDefault(); fileLoad(); }
+  else if (c&&e.key==='e') { e.preventDefault(); exportPNG(); }
+  else if (e.key==='Delete'||e.key==='Backspace') { e.preventDefault(); deleteSelected(); }
+  else if (e.key==='Escape') { e.preventDefault(); if(tunnelConnectingFrom){tunnelConnectingFrom=null;showToast('已取消隧道连接');updateAll();}else if(connectingFrom){connectingFrom=null;showToast('已取消连线');updateAll();}else{selectedId=null;selectedType=null;showProps();updateAll();} }
+  else if (e.key==='f'&&!c) { e.preventDefault(); zoomFit(); }
+  else if (e.key==='0'&&c) { e.preventDefault(); zoomReset(); }
+});
+
+// ==================== FILE OPERATIONS ====================
+function fileNew() {
+  if (project.nodes.length>0&&!confirm('确定要新建项目吗？未保存的数据将丢失。')) return;
+  pushUndo(); project={name:'未命名项目',nodes:[],edges:[]};
+  selectedId=null;selectedType=null;connectingFrom=null;tunnelConnectingFrom=null;
+  undoStack=[];redoStack=[];viewport={x:0,y:0,zoom:1};
+  clearAutoSave(); updateAll(); showToast('已创建新项目');
+}
+function fileSave() {
+  var data={version:1,name:project.name,nodes:project.nodes,edges:project.edges,viewport:viewport,exportedAt:new Date().toISOString()};
+  var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=(project.name||'attack-path')+'.atk.json'; a.click();
+  showToast('项目已保存 💾');
+}
+function fileLoad() {
+  var inp=document.createElement('input'); inp.type='file'; inp.accept='.json,.atk.json';
+  inp.onchange=function(e){
+    var f=e.target.files[0]; if(!f)return;
+    var r=new FileReader();
+    r.onload=function(ev){
+      try{
+        var d=JSON.parse(ev.target.result);
+        if(!d.nodes||!d.edges) throw new Error('无效格式');
+        pushUndo(); project.name=d.name||'导入'; project.nodes=d.nodes.filter(function(n){return Object.keys(NODE_TYPES).indexOf(n.type)!==-1;}); project.edges=d.edges;
+        if(d.viewport) viewport=d.viewport;
+        selectedId=null;selectedType=null;connectingFrom=null;tunnelConnectingFrom=null;undoStack=[];redoStack=[];
+        updateAll(); showToast('已加载: '+project.name+' ('+project.nodes.length+'节点)');
+      }catch(err){alert('加载失败: '+err.message);}
+    };
+    r.readAsText(f);
+  };
+  inp.click();
+}
+function exportJSON() {
+  var data={version:1,name:project.name,nodes:project.nodes,edges:project.edges,exportedAt:new Date().toISOString(),summary:{totalNodes:project.nodes.length,ownedNodes:project.nodes.filter(function(n){return n.status==='owned';}).length,totalEdges:project.edges.length,credentials:project.nodes.reduce(function(a,n){return a+(n.credentials||[]).length;},0)}};
+  var blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=(project.name||'attack-path')+'-export.json'; a.click();
+  showToast('JSON已导出 📋');
+}
+function exportPNG() {
+  var rect=canvasWrap.getBoundingClientRect();
+  var ec=document.createElement('canvas'); ec.width=rect.width*2; ec.height=rect.height*2;
+  var dctx=ec.getContext('2d'); dctx.scale(2,2); dctx.drawImage(canvasEl,0,0,rect.width,rect.height);
+  dctx.fillStyle='rgba(139,148,158,.6)'; dctx.font='11px "PingFang SC","Microsoft YaHei",sans-serif'; dctx.textAlign='right';
+  dctx.fillText('红队攻击路径管理工具 | '+project.name+' | '+new Date().toLocaleString('zh-CN'),rect.width-16,rect.height-16);
+  ec.toBlob(function(blob){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(project.name||'attack-path')+'.png';a.click();showToast('PNG已导出 📸');},'image/png');
+}
+function deleteSelected() {
+  if(!selectedId)return;
+  if(selectedType==='node'){deleteNode(selectedId);showToast('已删除');}else{deleteEdge(selectedId);showToast('已删除');}
+  selectedId=null;selectedType=null;showProps();updateAll();
+}
+
+// ==================== VIEWPORT ====================
+function zoomFit() {
+  if(!project.nodes.length){zoomReset();return;}
+  var mx=Infinity,my=Infinity,Mx=-Infinity,My=-Infinity;
+  for(var i=0;i<project.nodes.length;i++){var n=project.nodes[i],r=NODE_TYPES[n.type].radius+40;mx=Math.min(mx,n.x-r);my=Math.min(my,n.y-r);Mx=Math.max(Mx,n.x+r);My=Math.max(My,n.y+r);}
+  var rect=canvasWrap.getBoundingClientRect(),pad=40;
+  viewport.zoom=Math.min((rect.width-pad*2)/(Mx-mx||1),(rect.height-pad*2)/(My-my||1),2);
+  viewport.x=pad-mx*viewport.zoom+(rect.width-pad*2-(Mx-mx)*viewport.zoom)/2;
+  viewport.y=pad-my*viewport.zoom+(rect.height-pad*2-(My-my)*viewport.zoom)/2;
+  document.getElementById('stat-zoom').textContent=Math.round(viewport.zoom*100)+'%'; updateAll();
+}
+function zoomReset() { viewport={x:0,y:0,zoom:1}; document.getElementById('stat-zoom').textContent='100%'; updateAll(); }
+
+// ==================== UI TOGGLES ====================
+function toggleSidebar() { var s=document.getElementById('sidebar'); s.style.display=s.style.display==='none'?'':'none'; }
+function toggleProps() { var p=document.getElementById('props'); p.style.display=p.style.display==='none'?'':'none'; }
+
+// ==================== AUTO SAVE (localStorage 默认开启 + 可选文件升级) ====================
+var LS_KEY='redteam-attack-path-autosave';
+var AS_FILENAME='.attack-path-autosave.json';
+var autoSaveTimer=null;
+var autoSaveHandle=null; // FileSystemFileHandle, optional upgrade
+
+function buildSaveData() {
+  return {version:1,name:project.name,nodes:project.nodes,edges:project.edges,viewport:viewport,undoStack:undoStack,redoStack:redoStack,savedAt:new Date().toISOString()};
+}
+function restoreSaveData(d) {
+  project.name=d.name||'未命名项目';project.nodes=d.nodes||[];project.edges=d.edges||[];
+  if(d.viewport)viewport=d.viewport;if(d.undoStack)undoStack=d.undoStack;if(d.redoStack)redoStack=d.redoStack;
+  selectedId=null;selectedType=null;connectingFrom=null;tunnelConnectingFrom=null;
+}
+function upASL(text) { var el=document.getElementById('stat-autosave'); if(el){el.style.display='';el.textContent=text;} }
+
+function autoSave() {
+  clearTimeout(autoSaveTimer);
+  autoSaveTimer=setTimeout(function(){
+    var data=buildSaveData();
+    try { localStorage.setItem(LS_KEY,JSON.stringify(data)); } catch(e) {}
+    if (autoSaveHandle) {
+      autoSaveHandle.createWritable().then(function(w){return w.write(JSON.stringify(data,null,2)).then(function(){return w.close();});}).catch(function(){autoSaveHandle=null;upASL('💾 已自动保存');});
+    }
+    upASL(autoSaveHandle?'💾 已自动保存(文件)':'💾 已自动保存');
+  },300);
+}
+function clearAutoSave() {
+  try { localStorage.removeItem(LS_KEY); } catch(e) {}
+  if (autoSaveHandle) { autoSaveHandle.createWritable().then(function(w){return w.write('{}').then(function(){return w.close();});}).catch(function(){}); }
+}
+function loadLS() { try { var r=localStorage.getItem(LS_KEY); return r?JSON.parse(r):null; } catch(e) { return null; } }
+
+// File System Access API helpers
+function idbOpen() {
+  return new Promise(function(res,rej){var r=indexedDB.open('redteam-attack-path',1);r.onupgradeneeded=function(){r.result.createObjectStore('handles');};r.onsuccess=function(){res(r.result);};r.onerror=function(){rej(r.error);};});
+}
+function idbLoadH() {
+  return idbOpen().then(function(db){return new Promise(function(res){var t=db.transaction('handles','readonly');var r=t.objectStore('handles').get('autosave');r.onsuccess=function(){db.close();res(r.result||null);};r.onerror=function(){db.close();res(null);};});});
+}
+function idbStoreH(h) {
+  return idbOpen().then(function(db){return new Promise(function(res){var t=db.transaction('handles','readwrite');t.objectStore('handles').put(h,'autosave');t.oncomplete=function(){db.close();res();};});});
+}
+
+// Click status bar to upgrade to file save
+document.getElementById('stat-autosave').addEventListener('click',function(){
+  if (typeof showDirectoryPicker==='undefined') { showToast('⚠️ 需 Chrome/Edge 支持'); return; }
+  showDirectoryPicker({mode:'readwrite'}).then(function(dh){
+    return dh.getFileHandle(AS_FILENAME,{create:true}).then(function(fh){autoSaveHandle=fh;return idbStoreH(fh);}).then(function(){
+      upASL('💾 已自动保存(文件)');showToast('✅ 已升级为文件保存: '+dh.name+'/'+AS_FILENAME);autoSave();
+    });
+  }).catch(function(){});
+});
+
+function tryRestoreFH() {
+  return idbLoadH().then(function(h){
+    if (!h) return;
+    return h.queryPermission({mode:'readwrite'}).then(function(p){if(p!=='granted')return h.requestPermission({mode:'readwrite'});return p;}).then(function(p){if(p==='granted'){autoSaveHandle=h;upASL('💾 已自动保存(文件)');}});
+  }).catch(function(){autoSaveHandle=null;});
+}
+
+// ==================== UPDATE LOOP ====================
+function updateAll() {
+  render(); updateStatusBar(); updateUndoRedoButtons(); autoSave();
+  if (project.nodes.length>0&&hintEl.style.opacity!=='0'){hintEl.style.transition='opacity .5s';hintEl.style.opacity='0';setTimeout(function(){hintEl.textContent='';},500);}
+}
+function updateStatusBar() {
+  document.getElementById('stat-nodes').textContent=project.nodes.length;
+  document.getElementById('stat-owned').textContent=project.nodes.filter(function(n){return n.status==='owned';}).length;
+  document.getElementById('stat-edges').textContent=project.edges.length;
+}
+
+// ==================== INIT ====================
+document.addEventListener('click',function(e){if(!ctxmenu.contains(e.target))hideCM();});
+window.addEventListener('resize',function(){clearTimeout(window._rt);window._rt=setTimeout(function(){resizeCanvas();updateAll();},100);});
+
+function init() {
+  resizeCanvas();
+
+  // Always restore from localStorage (zero-config)
+  var saved=loadLS();
+  if (saved&&saved.nodes&&saved.nodes.length>0) {
+    restoreSaveData(saved);
+    showToast('已恢复上次会话 ('+project.nodes.length+'节点)');
+  } else {
+    loadDemo();
+  }
+
+  // Also try restoring file handle (transparent)
+  tryRestoreFH();
+
+  updateAll(); updateUndoRedoButtons();
+  setTimeout(zoomFit,300);
+}
+
+function loadDemo() {
+  project.name='示例: 内网渗透攻击路径';
+  var n1=addNode('attacker',100,350);n1.label='攻击者(C2)';n1.ip='45.xx.xx.xx';n1.status='owned';n1.tunnel='frps 0.0.0.0:7000 (服务端)\nSOCKS5 代理: VPS:1080 → 内网';
+  var n2=addNode('webserver',350,200);n2.label='Web入口';n2.ip='10.0.1.5';n2.hostname='WEB-PROD-01';n2.os='CentOS 7';n2.status='owned';n2.notes='SQL注入获取root';n2.credentials=['root:hash','webuser:Pass'];
+  var n3=addNode('pivot',350,500);n3.label='跳板-运维机';n3.ip='10.0.1.100';n3.hostname='OPS-JUMP';n3.os='Windows Server 2016';n3.status='owned';n3.notes='存有域账号';n3.credentials=['RED\\svc_ops:Op$2024!'];
+  var n4=addNode('dc',650,350);n4.label='域控';n4.ip='10.0.2.10';n4.hostname='DC-PRIMARY';n4.os='Windows Server 2019';n4.status='target';n4.notes='目标: DCSync';
+  var n5=addNode('database',350,350);n5.label='核心数据库';n5.ip='10.0.1.50';n5.hostname='DB-ORACLE-01';n5.os='Oracle Linux 8';n5.status='owned';n5.credentials=['system:OracleDB'];
+  var n6=addNode('workstation',650,550);n6.label='域管工作站';n6.ip='10.0.2.50';n6.hostname='ADMIN-WS01';n6.os='Windows 10';n6.status='target';n6.notes='域管登录过';
+
+  var e1=addEdge(n1.id,n2.id);if(e1){e1.label='frp正向代理';e1.method='HTTP/HTTPS';e1.payload='sqlmap -r req.txt --os-shell';e1.tunnel='forward';}
+  var e2=addEdge(n2.id,n3.id);if(e2){e2.label='SSH反向隧道';e2.method='SSH';e2.payload='ssh -R 1080:127.0.0.1:22 root@10.0.1.100';e2.tunnel='reverse';}
+  var e3=addEdge(n2.id,n5.id);if(e3){e3.label='内网扫描';e3.method='HTTP/HTTPS';}
+  var e4=addEdge(n3.id,n4.id);if(e4){e4.label='PTH到域控';e4.method='PTH (Pass-the-Hash)';e4.payload='mimikatz.exe sekurlsa::pth /user:admin /domain:RED /ntlm:xxx';}
+  var e5=addEdge(n3.id,n6.id);if(e5){e5.label='RDP登录';e5.method='RDP';}
+  var e6=addEdge(n4.id,n6.id);if(e6){e6.label='域管登录痕迹';e6.method='SMB';}
+  undoStack=[];redoStack=[];
+}
+
+init();
+</script>
+</body>
+</html>
