@@ -15,7 +15,7 @@
 5. Ctrl+S 保存,下次使用加载对应json即可，当前项目也支持自动保存
 ```
 
-![image-20260715214830639](README.assets/image-20260715214830639.png)
+![image-20260715214830639](https://raw.githubusercontent.com/d0ctorsec/RedTeamAttackChainMapper/refs/heads/main/README.assets/image-20260715214830639.png)
 
 ## 0x01.怎么用
 
@@ -27,11 +27,11 @@
 **导出截图** — 一键导出PNG，直接贴到渗透测试报告里
 ```
 
-![iShot_2026-07-15_22.08.00](README.assets/iShot_2026-07-15_22.08.00.gif)
+![iShot_2026-07-15_22.08.00](https://raw.githubusercontent.com/d0ctorsec/RedTeamAttackChainMapper/refs/heads/main/README.assets/iShot_2026-07-15_22.08.00.gif)
 
 **保存和加载** — 项目存为 `.atk.json` 文件，下次打开继续编辑
 
-![image-20260715221642935](README.assets/image-20260715221642935.png)
+![image-20260715221642935](https://raw.githubusercontent.com/d0ctorsec/RedTeamAttackChainMapper/refs/heads/main/README.assets/image-20260715221642935.png)
 
 ## 0x02.后续
 
@@ -46,4 +46,4 @@
 
 **修复-图标显示不清晰问题**
 
-![image-20260716001751829](README.assets/image-20260716001751829.png)
+![image-20260716001751829](https://raw.githubusercontent.com/d0ctorsec/RedTeamAttackChainMapper/refs/heads/main/README.assets/image-20260716001751829.png)
