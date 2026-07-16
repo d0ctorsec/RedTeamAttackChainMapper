@@ -62,6 +62,13 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); overflo
 
 #statusbar { display:flex; align-items:center; gap:16px; padding:4px 16px; background:var(--bg2); border-top:1px solid var(--border); font-size:11px; color:var(--text2); flex-shrink:0; z-index:100; }
 #statusbar span { display:flex; align-items:center; gap:4px; }
+#search-box { display:flex; align-items:center; gap:4px; margin-left:auto; }
+#search-box input { width:160px; padding:4px 8px; border-radius:4px; border:1px solid var(--border); background:var(--bg3); color:var(--text); font-size:12px; font-family:var(--font); outline:none; transition:border-color .15s,width .2s; }
+#search-box input:focus { border-color:var(--accent); width:220px; }
+#search-box input::placeholder { color:var(--text2); font-size:11px; }
+#search-count { font-size:11px; color:var(--text2); min-width:40px; text-align:center; }
+.sbtn { padding:3px 6px; border-radius:3px; border:1px solid var(--border); background:var(--bg3); color:var(--text2); cursor:pointer; font-size:11px; transition:all .1s; }
+.sbtn:hover { background:var(--accent); color:#fff; border-color:var(--accent); }
 #statusbar .badge { background:var(--bg3); border-radius:10px; padding:2px 8px; font-weight:600; color:var(--text); }
 #stat-autosave { cursor:pointer; color:var(--success); }
 #stat-autosave:hover { text-decoration:underline; }
@@ -98,6 +105,12 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); overflo
   <span class="sep"></span>
   <button class="tbtn" onclick="toggleSidebar()">◧</button>
   <button class="tbtn" onclick="toggleProps()">◨</button>
+  <div id="search-box">
+    <input type="text" id="search-input" placeholder="🔍 搜索IP/主机名/凭据..." oninput="performSearch()" onkeydown="searchKey(event)">
+    <span id="search-count"></span>
+    <button class="sbtn" onclick="searchPrev()" title="上一个 Shift+Enter">▲</button>
+    <button class="sbtn" onclick="searchNext()" title="下一个 Enter">▼</button>
+  </div>
 </div>
 
 <div id="main">
@@ -162,6 +175,7 @@ var isDragging = false, dragTarget = null, dragStart = {x:0,y:0}, dragOrigPos = 
 var isPanning = false, panStart = {x:0,y:0}, viewStart = {x:0,y:0};
 var mousePos = {x:0,y:0};
 var undoStack = [], redoStack = [], MAX_UNDO = 200;
+var searchResults = [], searchIndex = -1;
 
 // ==================== DOM ====================
 var canvasWrap = document.getElementById('canvas-wrap');
@@ -272,8 +286,12 @@ function drawEdgeShape(edge) {
   var x1=sn.x+nx*sr, y1=sn.y+ny*sr, x2=tn.x-nx*tr, y2=tn.y-ny*tr;
   var sel=selectedId===edge.id, hov=hoveredId===edge.id;
   var isTunnel = edge.tunnel==='forward'||edge.tunnel==='reverse';
-  var color=sel?'#58a6ff':(hov?'#79c0ff':(isTunnel?'#39d2c0':'#484f58'));
-  var lw=sel?3:(hov?2.5:(isTunnel?2.5:2));
+  // Search highlight
+  var esrIdx = -1;
+  for (var esi=0; esi<searchResults.length; esi++) { if (searchResults[esi].type==='edge'&&searchResults[esi].id===edge.id) { esrIdx=esi; break; } }
+  var isESrch = esrIdx>=0, isESrchCur = isESrch && esrIdx===searchIndex;
+  var color=isESrchCur?'#f0c040':(isESrch?'rgba(240,192,64,.8)':(sel?'#58a6ff':(hov?'#79c0ff':(isTunnel?'#39d2c0':'#484f58'))));
+  var lw=isESrchCur?4:(isESrch?3:(sel?3:(hov?2.5:(isTunnel?2.5:2))));
 
   // Tunnel edges use bezier curves; normal edges are straight
   var midX, midY, endAng;
@@ -346,8 +364,14 @@ function drawEdgeShape(edge) {
 function drawNodeShape(node) {
   var d=NODE_TYPES[node.type], r=d.radius;
   var sel=selectedId===node.id, hov=hoveredId===node.id, con=connectingFrom===node.id, tcon=tunnelConnectingFrom===node.id;
+  // Search highlight
+  var srIdx = -1;
+  for (var si=0; si<searchResults.length; si++) { if (searchResults[si].type==='node'&&searchResults[si].id===node.id) { srIdx=si; break; } }
+  var isSearchMatch = srIdx>=0, isSearchCur = isSearchMatch && srIdx===searchIndex;
 
-  if (sel||con||tcon) { ctx.shadowColor=tcon?'#39d2c0':(con?'#f0883e':'#58a6ff'); ctx.shadowBlur=20; }
+  if (isSearchCur) { ctx.shadowColor='#f0c040'; ctx.shadowBlur=28; }
+  else if (isSearchMatch) { ctx.shadowColor='rgba(240,192,64,.5)'; ctx.shadowBlur=12; }
+  else if (sel||con||tcon) { ctx.shadowColor=tcon?'#39d2c0':(con?'#f0883e':'#58a6ff'); ctx.shadowBlur=20; }
   ctx.beginPath(); ctx.arc(node.x,node.y,r+4,0,Math.PI*2); ctx.fillStyle=d.bg; ctx.fill();
   ctx.beginPath(); ctx.arc(node.x,node.y,r+2,0,Math.PI*2);
   ctx.strokeStyle=sel?'#58a6ff':(hov?'#79c0ff':(tcon?'#39d2c0':(con?'#f0883e':d.color)));
@@ -667,7 +691,53 @@ window.addEventListener('keydown',function(e){
   else if (e.key==='Escape') { e.preventDefault(); if(tunnelConnectingFrom){tunnelConnectingFrom=null;showToast('已取消隧道连接');updateAll();}else if(connectingFrom){connectingFrom=null;showToast('已取消连线');updateAll();}else{selectedId=null;selectedType=null;showProps();updateAll();} }
   else if (e.key==='f'&&!c) { e.preventDefault(); zoomFit(); }
   else if (e.key==='0'&&c) { e.preventDefault(); zoomReset(); }
+  else if (c&&e.key==='f') { e.preventDefault(); document.getElementById('search-input').focus(); document.getElementById('search-input').select(); }
 });
+
+// ==================== SEARCH ====================
+function performSearch() {
+  var q = document.getElementById('search-input').value.trim().toLowerCase();
+  searchResults = []; searchIndex = -1;
+  if (!q) { document.getElementById('search-count').textContent=''; updateAll(); return; }
+  // Search nodes
+  for (var i=0; i<project.nodes.length; i++) {
+    var n=project.nodes[i];
+    var nhay = (n.label+' '+n.ip+' '+n.hostname+' '+n.os+' '+n.notes+' '+n.tunnel+' '+(n.credentials||[]).join(' ')).toLowerCase();
+    if (nhay.indexOf(q)!==-1) searchResults.push({type:'node',id:n.id});
+  }
+  // Search edges
+  for (var i=0; i<project.edges.length; i++) {
+    var e=project.edges[i], ti=e.tunnelInfo||{};
+    var ehay = (e.label+' '+e.method+' '+e.payload+' '+e.tunnel+' '+ti.tool+' '+ti.localAddr+' '+ti.remoteAddr+' '+ti.proto).toLowerCase();
+    if (ehay.indexOf(q)!==-1) searchResults.push({type:'edge',id:e.id});
+  }
+  searchIndex = searchResults.length>0 ? 0 : -1;
+  document.getElementById('search-count').textContent = searchResults.length ? (searchIndex+1)+'/'+searchResults.length : '无结果';
+  if (searchResults.length>0) focusResult();
+  updateAll();
+}
+function searchNext() { if (!searchResults.length) return; searchIndex=(searchIndex+1)%searchResults.length; focusResult(); updateAll(); }
+function searchPrev() { if (!searchResults.length) return; searchIndex=(searchIndex-1+searchResults.length)%searchResults.length; focusResult(); updateAll(); }
+function searchKey(e) {
+  if (e.key==='Enter') { e.preventDefault(); if (e.shiftKey) searchPrev(); else searchNext(); }
+  if (e.key==='Escape') { document.getElementById('search-input').value=''; performSearch(); }
+}
+function focusResult() {
+  var r=searchResults[searchIndex]; if (!r) return;
+  if (r.type==='node') { selectedId=r.id; selectedType='node'; }
+  else { selectedId=r.id; selectedType='edge'; }
+  showProps();
+  // Pan viewport to center on result
+  var cx, cy;
+  if (r.type==='node') { var n=findNode(r.id); if (n) { cx=n.x; cy=n.y; } }
+  else { var e=findEdge(r.id), sn=findNode(e.source), tn=findNode(e.target); if (sn&&tn) { cx=(sn.x+tn.x)/2; cy=(sn.y+tn.y)/2; } }
+  if (cx!==undefined) {
+    var rect=canvasWrap.getBoundingClientRect();
+    viewport.x = rect.width/2 - cx*viewport.zoom;
+    viewport.y = rect.height/2 - cy*viewport.zoom;
+  }
+  document.getElementById('search-count').textContent = (searchIndex+1)+'/'+searchResults.length;
+}
 
 // ==================== FILE OPERATIONS ====================
 function fileNew() {
@@ -675,7 +745,7 @@ function fileNew() {
   pushUndo(); project={name:'未命名项目',nodes:[],edges:[]};
   selectedId=null;selectedType=null;connectingFrom=null;tunnelConnectingFrom=null;
   undoStack=[];redoStack=[];viewport={x:0,y:0,zoom:1};
-  clearAutoSave(); updateAll(); showToast('已创建新项目');
+  clearAutoSave(); document.getElementById('search-input').value=''; searchResults=[]; searchIndex=-1; document.getElementById('search-count').textContent=''; updateAll(); showToast('已创建新项目');
 }
 function fileSave() {
   var data={version:1,name:project.name,nodes:project.nodes,edges:project.edges,viewport:viewport,exportedAt:new Date().toISOString()};
@@ -695,6 +765,7 @@ function fileLoad() {
         pushUndo(); project.name=d.name||'导入'; project.nodes=d.nodes.filter(function(n){return Object.keys(NODE_TYPES).indexOf(n.type)!==-1;}); project.edges=d.edges;
         if(d.viewport) viewport=d.viewport;
         selectedId=null;selectedType=null;connectingFrom=null;tunnelConnectingFrom=null;undoStack=[];redoStack=[];
+        document.getElementById('search-input').value=''; searchResults=[]; searchIndex=-1; document.getElementById('search-count').textContent='';
         updateAll(); showToast('已加载: '+project.name+' ('+project.nodes.length+'节点)');
       }catch(err){alert('加载失败: '+err.message);}
     };
@@ -711,7 +782,10 @@ function exportJSON() {
 function exportPNG() {
   var rect=canvasWrap.getBoundingClientRect();
   var ec=document.createElement('canvas'); ec.width=rect.width*2; ec.height=rect.height*2;
-  var dctx=ec.getContext('2d'); dctx.scale(2,2); dctx.drawImage(canvasEl,0,0,rect.width,rect.height);
+  var dctx=ec.getContext('2d'); dctx.scale(2,2);
+  // Fill dark background (canvas is transparent, CSS bg doesn't copy)
+  dctx.fillStyle='#0d1117'; dctx.fillRect(0,0,rect.width,rect.height);
+  dctx.drawImage(canvasEl,0,0,rect.width,rect.height);
   dctx.fillStyle='rgba(139,148,158,.6)'; dctx.font='11px "PingFang SC","Microsoft YaHei",sans-serif'; dctx.textAlign='right';
   dctx.fillText('红队攻击路径管理工具 | '+project.name+' | '+new Date().toLocaleString('zh-CN'),rect.width-16,rect.height-16);
   ec.toBlob(function(blob){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(project.name||'attack-path')+'.png';a.click();showToast('PNG已导出 📸');},'image/png');

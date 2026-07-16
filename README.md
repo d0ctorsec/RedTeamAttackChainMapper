@@ -47,3 +47,9 @@
 **修复-图标显示不清晰问题**
 
 ![image-20260716001751829](https://raw.githubusercontent.com/d0ctorsec/RedTeamAttackChainMapper/refs/heads/main/README.assets/image-20260716001751829.png)
+
+### v1.2.0更新
+
+**新增-搜索功能：**可全局搜索对应资产，自动展开资产详情
+
+**修复-修复导出图片无法显示背景问题**
