@@ -8,7 +8,7 @@
 
 ```markdown
 # 拖拽式攻击路径可视化工具，浏览器打开即用，无需联网，就这么简单。
-1. 浏览器打开 `attack-path-tool.html`
+1. 浏览器打开 `RedTeamAttackChainMapper.html`
 2. 从左侧拖拽节点到画布
 3. 右键节点 → 连线 → 点击目标
 4. 点选节点/连线，右侧编辑IP、备注、凭据等
