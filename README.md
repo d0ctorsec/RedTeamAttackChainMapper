@@ -15,8 +15,6 @@
 5. Ctrl+S 保存,下次使用加载对应json即可，当前项目也支持自动保存
 ```
 
-![image-20260715214830639](https://raw.githubusercontent.com/d0ctorsec/RedTeamAttackChainMapper/refs/heads/main/README.assets/image-20260715214830639.png)
-
 ## 0x01.怎么用
 
 ```markdown
@@ -30,8 +28,6 @@
 ![iShot_2026-07-15_22.08.00](https://raw.githubusercontent.com/d0ctorsec/RedTeamAttackChainMapper/refs/heads/main/README.assets/iShot_2026-07-15_22.08.00.gif)
 
 **保存和加载** — 项目存为 `.atk.json` 文件，下次打开继续编辑
-
-![image-20260715221642935](https://raw.githubusercontent.com/d0ctorsec/RedTeamAttackChainMapper/refs/heads/main/README.assets/image-20260715221642935.png)
 
 ## 0x02.后续
 
@@ -55,3 +51,9 @@
 **修复-修复导出图片无法显示背景问题**
 
 ![image-20260716140546977](README.assets/image-20260716140546977-4182078.png)
+
+### v1.3.0更新
+
+新增-日间模式：支持切换日间模式，导出白色PNG
+
+![image-20260723154234262](README.assets/image-20260723154234262.png)

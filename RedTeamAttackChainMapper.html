@@ -11,6 +11,11 @@
   --success: #3fb950; --warn: #d29922; --font: 'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
   --mono: 'SF Mono','Cascadia Code','Consolas',monospace;
 }
+[data-theme="light"] {
+	--bg: #ffffff; --bg2: #f6f8fa; --bg3: #e8eaed; --border: #d0d7de;
+	--text: #1f2328; --text2: #656d76; --accent: #0969da; --danger: #cf222e;
+	--success: #1a7f37; --warn: #9a6700;
+}
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family:var(--font); background:var(--bg); color:var(--text); overflow:hidden; height:100vh; display:flex; flex-direction:column; user-select:none; }
 
@@ -33,6 +38,7 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); overflo
 .node-palette-item .dot { width:12px; height:12px; border-radius:50%; flex-shrink:0; }
 
 #canvas-wrap { flex:1; position:relative; overflow:hidden; background:radial-gradient(circle at 50% 50%, rgba(88,166,255,.03) 0%, transparent 60%), var(--bg); }
+[data-theme="light"] #canvas-wrap { background:radial-gradient(circle at 50% 50%, rgba(9,105,218,.06) 0%, transparent 60%), var(--bg); }
 #canvas-wrap canvas { display:block; position:absolute; top:0; left:0; }
 #canvas-wrap .hint { position:absolute; bottom:20px; left:50%; transform:translateX(-50%); color:var(--text2); font-size:12px; pointer-events:none; opacity:.6; transition:opacity 1s; }
 
@@ -95,6 +101,8 @@ body { font-family:var(--font); background:var(--bg); color:var(--text); overflo
   <span class="sep"></span>
   <button class="tbtn" onclick="exportPNG()" title="导出PNG Ctrl+E">📸 导出PNG</button>
   <button class="tbtn" onclick="exportJSON()" title="导出JSON">📋 导出JSON</button>
+  <span class="sep"></span>
+  <button class="tbtn" id="btn-theme" onclick="toggleTheme()" title="切换亮色/暗色主题">🌓 主题</button>
   <span class="sep"></span>
   <button class="tbtn" id="btn-undo" onclick="undo()" title="撤销 Ctrl+Z">↩ 撤销</button>
   <button class="tbtn" id="btn-redo" onclick="redo()" title="重做 Ctrl+Y">↪ 重做</button>
@@ -187,6 +195,46 @@ var propsBody = document.getElementById('props-body');
 var ctxmenu = document.getElementById('ctxmenu');
 var toastEl = document.getElementById('toast');
 
+// ==================== THEME ====================
+var TC = {};
+function applyTheme() {
+	var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+	if (isLight) {
+		TC.bg = '#ffffff';
+		TC.gridLine = 'rgba(208,215,222,.5)';
+		TC.edgeDefault = '#8b949e';
+		TC.edgeLabelBg = 'rgba(255,255,255,.9)';
+		TC.nodeLabelColor = '#1f2328';
+		TC.nodeSubColor = '#656d76';
+		TC.canvasBg = '#ffffff';
+		TC.watermarkColor = 'rgba(101,109,118,.6)';
+		TC.nodeGradTop = 'rgba(255,255,255,.4)';
+		TC.nodeGradBot = 'rgba(0,0,0,.05)';
+		TC.nodeRim = 'rgba(0,0,0,.06)';
+	} else {
+		TC.bg = '#0d1117';
+		TC.gridLine = 'rgba(48,54,61,.4)';
+		TC.edgeDefault = '#484f58';
+		TC.edgeLabelBg = 'rgba(13,17,23,.85)';
+		TC.nodeLabelColor = '#e6edf3';
+		TC.nodeSubColor = '#8b949e';
+		TC.canvasBg = '#0d1117';
+		TC.watermarkColor = 'rgba(139,148,158,.6)';
+		TC.nodeGradTop = 'rgba(255,255,255,.08)';
+		TC.nodeGradBot = 'rgba(0,0,0,.2)';
+		TC.nodeRim = 'rgba(255,255,255,.06)';
+	}
+}
+function toggleTheme() {
+	var el = document.documentElement;
+	var next = el.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+	el.setAttribute('data-theme', next);
+	applyTheme();
+	try { localStorage.setItem('redteam-theme', next); } catch(e) {}
+	updateAll();
+	showToast(next === 'light' ? '已切换为亮色主题 ☀️' : '已切换为暗色主题 🌙');
+}
+
 // ==================== UTILS ====================
 function genId() { return 'n'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function screenToWorld(sx,sy) { return { x:(sx-viewport.x)/viewport.zoom, y:(sy-viewport.y)/viewport.zoom }; }
@@ -271,7 +319,7 @@ function drawGrid() {
   var gs=40, w=canvasEl.width/devicePixelRatio, h=canvasEl.height/devicePixelRatio;
   var wx=-viewport.x/viewport.zoom, wy=-viewport.y/viewport.zoom;
   var ww=w/viewport.zoom, wh=h/viewport.zoom;
-  ctx.strokeStyle='rgba(48,54,61,.4)'; ctx.lineWidth=.5; ctx.beginPath();
+  ctx.strokeStyle=TC.gridLine; ctx.lineWidth=.5; ctx.beginPath();
   for (var x=Math.floor(wx/gs)*gs; x<=wx+ww+gs; x+=gs) { ctx.moveTo(x,wy); ctx.lineTo(x,wy+wh+gs); }
   for (var y=Math.floor(wy/gs)*gs; y<=wy+wh+gs; y+=gs) { ctx.moveTo(wx,y); ctx.lineTo(wx+ww+gs,y); }
   ctx.stroke();
@@ -290,7 +338,7 @@ function drawEdgeShape(edge) {
   var esrIdx = -1;
   for (var esi=0; esi<searchResults.length; esi++) { if (searchResults[esi].type==='edge'&&searchResults[esi].id===edge.id) { esrIdx=esi; break; } }
   var isESrch = esrIdx>=0, isESrchCur = isESrch && esrIdx===searchIndex;
-  var color=isESrchCur?'#f0c040':(isESrch?'rgba(240,192,64,.8)':(sel?'#58a6ff':(hov?'#79c0ff':(isTunnel?'#39d2c0':'#484f58'))));
+  var color=isESrchCur?'#f0c040':(isESrch?'rgba(240,192,64,.8)':(sel?'#58a6ff':(hov?'#79c0ff':(isTunnel?'#39d2c0':TC.edgeDefault))));
   var lw=isESrchCur?4:(isESrch?3:(sel?3:(hov?2.5:(isTunnel?2.5:2))));
 
   // Tunnel edges use bezier curves; normal edges are straight
@@ -340,7 +388,7 @@ function drawEdgeShape(edge) {
     var mx=midX, my=midY, oy=-12;
     ctx.font='bold 11px "PingFang SC","Microsoft YaHei",sans-serif';
     var tw=ctx.measureText(lbl).width, pad=6;
-    ctx.fillStyle='rgba(13,17,23,.85)';
+    ctx.fillStyle=TC.edgeLabelBg;
     ctx.fillRect(mx-tw/2-pad,my+oy-9,tw+pad*2,18);
     ctx.strokeStyle=color; ctx.lineWidth=1;
     ctx.strokeRect(mx-tw/2-pad,my+oy-9,tw+pad*2,18);
@@ -379,9 +427,9 @@ function drawNodeShape(node) {
   ctx.shadowColor='transparent'; ctx.shadowBlur=0;
 
   var g=ctx.createRadialGradient(node.x-r*.3,node.y-r*.3,0,node.x,node.y,r);
-  g.addColorStop(0,'rgba(255,255,255,.08)'); g.addColorStop(1,'rgba(0,0,0,.2)');
+  g.addColorStop(0,TC.nodeGradTop); g.addColorStop(1,TC.nodeGradBot);
   ctx.beginPath(); ctx.arc(node.x,node.y,r,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
-  ctx.strokeStyle='rgba(255,255,255,.06)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.strokeStyle=TC.nodeRim; ctx.lineWidth=1; ctx.stroke();
 
   ctx.font=(r*.7)+'px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
   ctx.fillText(d.icon,node.x,node.y-2);
@@ -393,11 +441,11 @@ function drawNodeShape(node) {
   ctx.fillText(si, node.x-r+2, node.y-r+1);
 
   ctx.font='bold 12px "PingFang SC","Microsoft YaHei",sans-serif';
-  ctx.fillStyle='#e6edf3'; ctx.textAlign='center';
+  ctx.fillStyle=TC.nodeLabelColor; ctx.textAlign='center';
   ctx.fillText(node.label,node.x,node.y+r+14);
 
   if (node.ip||node.hostname) {
-    ctx.font='10px "SF Mono","Consolas",monospace'; ctx.fillStyle='#8b949e';
+    ctx.font='10px "SF Mono","Consolas",monospace'; ctx.fillStyle=TC.nodeSubColor;
     ctx.fillText(node.ip||node.hostname,node.x,node.y+r+28);
   }
   if (node.credentials&&node.credentials.length) {
@@ -784,9 +832,9 @@ function exportPNG() {
   var ec=document.createElement('canvas'); ec.width=rect.width*2; ec.height=rect.height*2;
   var dctx=ec.getContext('2d'); dctx.scale(2,2);
   // Fill dark background (canvas is transparent, CSS bg doesn't copy)
-  dctx.fillStyle='#0d1117'; dctx.fillRect(0,0,rect.width,rect.height);
+  dctx.fillStyle=TC.canvasBg; dctx.fillRect(0,0,rect.width,rect.height);
   dctx.drawImage(canvasEl,0,0,rect.width,rect.height);
-  dctx.fillStyle='rgba(139,148,158,.6)'; dctx.font='11px "PingFang SC","Microsoft YaHei",sans-serif'; dctx.textAlign='right';
+  dctx.fillStyle=TC.watermarkColor; dctx.font='11px "PingFang SC","Microsoft YaHei",sans-serif'; dctx.textAlign='right';
   dctx.fillText('红队攻击路径管理工具 | '+project.name+' | '+new Date().toLocaleString('zh-CN'),rect.width-16,rect.height-16);
   ec.toBlob(function(blob){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(project.name||'attack-path')+'.png';a.click();showToast('PNG已导出 📸');},'image/png');
 }
@@ -890,6 +938,11 @@ document.addEventListener('click',function(e){if(!ctxmenu.contains(e.target))hid
 window.addEventListener('resize',function(){clearTimeout(window._rt);window._rt=setTimeout(function(){resizeCanvas();updateAll();},100);});
 
 function init() {
+  // Restore theme preference
+  var savedTheme = (function(){ try { return localStorage.getItem('redteam-theme'); } catch(e) { return null; } })() || 'dark';
+  document.documentElement.setAttribute('data-theme', savedTheme);
+  applyTheme();
+
   resizeCanvas();
 
   // Always restore from localStorage (zero-config)
